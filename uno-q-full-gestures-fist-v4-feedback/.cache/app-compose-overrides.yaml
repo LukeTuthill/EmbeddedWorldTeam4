@@ -1,0 +1,23 @@
+services:
+  ei-obj-detection-runner:
+    user: 1000:1000
+    group_add:
+    - 44
+    - 29
+    - 991
+    - 20
+    - 1001
+    labels:
+      cc.arduino.app: "true"
+      cc.arduino.app.path: /home/arduino/ArduinoApps/uno-q-full-gestures-fist-v4-feedback
+    environment:
+      APP_HOME: /home/arduino/ArduinoApps/uno-q-full-gestures-fist-v4-feedback
+      BIND_ADDRESS: 127.0.0.1
+      BOARD_NAME: unoq
+      CUSTOM_MODEL_PATH: /home/arduino/.arduino-bricks/ei-models
+      EI_OBJ_DETECTION_MODEL: /models/ootb/ei/hand-gestures.eim
+      EI_V_OBJ_DETECTION_MODEL: /models/ootb/ei/hand-gestures.eim
+      HOST_IP: 10.36.254.155
+      MODELS_PATH: /var/lib/arduino-app-cli/models
+      VIDEO_DEVICE: /dev/video0
+      XDG_RUNTIME_DIR: /run/user/1000

@@ -1,0 +1,52 @@
+{
+  "backend": "integrated",
+  "camera": {
+    "device": "/dev/video0",
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "mirror": false,
+    "timeout_seconds": 5.0
+  },
+  "recognition": {
+    "min_confidence": 0.5,
+    "stable_frames": 2,
+    "fast_confidence": 0.85,
+    "repeat_seconds": 2.0
+  },
+  "integrated": {
+    "resize_mode": "letterbox",
+    "jpeg_quality": 90
+  },
+  "led": {
+    "enabled": true,
+    "gesture_colors": {
+      "Open_Palm": "red",
+      "Thumb_Up": "green"
+    },
+    "heartbeat_seconds": 0.4
+  },
+  "buzzer": {
+    "enabled": true
+  },
+  "diagnostics": {
+    "startup_feedback_test": true,
+    "interval_seconds": 2.0
+  },
+  "v_gesture": {
+    "enabled": false,
+    "min_confidence": 0.50,
+    "stable_frames": 2,
+    "max_gap_seconds": 0.40,
+    "release_seconds": 0.40,
+    "max_result_age_seconds": 0.75
+  },
+  "fist_gesture": {
+    "enabled": true,
+    "min_confidence": 0.50,
+    "stable_frames": 2,
+    "max_gap_seconds": 0.40,
+    "release_seconds": 0.40,
+    "max_result_age_seconds": 0.75
+  }
+}

@@ -1,0 +1,5 @@
+name: UNO Q Fist V4 Feedback
+description: Static closed-fist Skip with pixel animation, buzzer, and matrix counter.
+bricks:
+  - arduino:object_detection:
+      model: hand-gestures

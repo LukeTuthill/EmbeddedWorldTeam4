@@ -1,0 +1,230 @@
+#include <Arduino_RouterBridge.h>
+#include <Arduino_Modulino.h>
+#include <Arduino_LED_Matrix.h>
+
+// V6 keeps the Python Bridge protocol while using the supplied animations.
+constexpr unsigned long FEEDBACK_TIMEOUT_MS = 1500;
+constexpr unsigned long ANIMATION_MS = 1000;
+constexpr unsigned long FRAME_MS = 40;
+constexpr bool SOUND_ALLOWED = true;
+constexpr uint8_t NUM_PIXELS = 8;
+constexpr uint8_t MATRIX_ROWS = 8;
+constexpr uint8_t MATRIX_COLS = 13;
+const int RGB_PINS[] = {LED3_R, LED3_G, LED3_B, LED4_R, LED4_G, LED4_B};
+
+const uint8_t DIGITS[10][5] = {
+  {0b111, 0b101, 0b101, 0b101, 0b111},
+  {0b010, 0b110, 0b010, 0b010, 0b111},
+  {0b111, 0b001, 0b111, 0b100, 0b111},
+  {0b111, 0b001, 0b111, 0b001, 0b111},
+  {0b101, 0b101, 0b111, 0b001, 0b001},
+  {0b111, 0b100, 0b111, 0b001, 0b111},
+  {0b111, 0b100, 0b111, 0b101, 0b111},
+  {0b111, 0b001, 0b001, 0b001, 0b001},
+  {0b111, 0b101, 0b111, 0b101, 0b111},
+  {0b111, 0b101, 0b111, 0b001, 0b111},
+};
+
+ModulinoPixels pixels;
+ModulinoBuzzer buzzer;
+Arduino_LED_Matrix matrix;
+bool pixelsReady = false;
+bool buzzerReady = false;
+bool matrixReady = false;
+int gestureColor = 0;  // Bridge protocol: 0=off, 1=red, 2=green.
+int displayedColor = 0;
+bool soundEnabled = false;
+bool lightsEnabled = false;
+unsigned long lastHeartbeat = 0;
+unsigned long animationStarted = 0;
+unsigned long lastFrame = 0;
+int lastPalmPulse = -1;
+unsigned int gestureCount = 0;
+
+enum Animation { NONE, PALM, THUMB, SWIPE };
+Animation animation = NONE;
+
+void show_color(int color) {
+  for (int pin : RGB_PINS) digitalWrite(pin, HIGH);  // MCU RGB LEDs are active-low.
+  if (color == 1) {
+    digitalWrite(LED3_R, LOW);
+    digitalWrite(LED4_R, LOW);
+  } else if (color == 2) {
+    digitalWrite(LED3_G, LOW);
+    digitalWrite(LED4_G, LOW);
+  } else if (color == 3) {
+    digitalWrite(LED3_B, LOW);
+    digitalWrite(LED4_B, LOW);
+  }
+  if (pixelsReady) {
+    for (uint8_t i = 0; i < NUM_PIXELS; ++i) {
+      pixels.set(i, color == 1 ? 255 : 0, color == 2 ? 255 : 0,
+                 color == 3 ? 255 : 0, 25);
+    }
+    pixels.show();
+  }
+  displayedColor = color;
+}
+
+void display_count() {
+  if (!matrixReady) return;
+  unsigned int value = gestureCount > 999 ? 999 : gestureCount;
+  uint8_t digits[3];
+  uint8_t count = 0;
+  do {
+    digits[count++] = value % 10;
+    value /= 10;
+  } while (value > 0);
+  const uint8_t width = count * 4 - 1;
+  const uint8_t x0 = (MATRIX_COLS - width) / 2;
+  const uint8_t y0 = (MATRIX_ROWS - 5) / 2;
+  uint8_t frame[MATRIX_ROWS * MATRIX_COLS] = {0};
+  for (uint8_t i = 0; i < count; ++i) {
+    const uint8_t digit = digits[count - 1 - i];
+    for (uint8_t row = 0; row < 5; ++row) {
+      for (uint8_t col = 0; col < 3; ++col) {
+        if (DIGITS[digit][row] & (0b100 >> col)) {
+          frame[(y0 + row) * MATRIX_COLS + x0 + i * 4 + col] = 255;
+        }
+      }
+    }
+  }
+  matrix.draw(frame);
+}
+
+void begin_animation(Animation next) {
+  animation = next;
+  animationStarted = millis();
+  lastFrame = 0;
+  lastPalmPulse = -1;
+  if (gestureCount < 999) ++gestureCount;
+  display_count();
+}
+
+void clear_feedback() {
+  animation = NONE;
+  gestureColor = 0;
+  soundEnabled = false;
+  lightsEnabled = false;
+  show_color(0);
+  if (buzzerReady) buzzer.noTone();
+}
+
+int hardware_status() {
+  return (pixelsReady ? 1 : 0) | (buzzerReady ? 2 : 0);
+}
+
+int set_gesture_feedback(int color, bool lights, bool sound) {
+  if (color < 0 || color > 2) color = 0;
+  const bool changed = color != gestureColor;
+  lastHeartbeat = millis();
+  if (color == 0) {
+    if (gestureColor != 0 || animation != NONE || displayedColor != 0) clear_feedback();
+    return hardware_status();
+  }
+  gestureColor = color;
+  lightsEnabled = lights;
+  soundEnabled = SOUND_ALLOWED && sound;
+  if (changed) {
+    show_color(lights ? color : 0);
+    begin_animation(color == 1 ? PALM : THUMB);
+  } else if (animation == NONE && displayedColor != (lights ? color : 0)) {
+    show_color(lights ? color : 0);
+  }
+  if (!soundEnabled && buzzerReady) buzzer.noTone();
+  return hardware_status();
+}
+
+int gesture_feedback_version() { return 4; }
+
+int show_skip(bool lights, bool sound) {
+  gestureColor = 0;
+  lightsEnabled = lights;
+  soundEnabled = SOUND_ALLOWED && sound;
+  lastHeartbeat = millis();
+  show_color(lights ? 3 : 0);
+  begin_animation(SWIPE);
+  return hardware_status();
+}
+
+void render_animation(unsigned long now) {
+  if (animation == NONE) return;
+  const unsigned long elapsed = now - animationStarted;
+  if (elapsed >= ANIMATION_MS) {
+    const bool wasSwipe = animation == SWIPE;
+    animation = NONE;
+    if (buzzerReady) buzzer.noTone();
+    show_color(wasSwipe ? 0 : (lightsEnabled ? gestureColor : 0));
+    return;
+  }
+  if (lastFrame != 0 && now - lastFrame < FRAME_MS) return;
+  lastFrame = now;
+
+  if (animation == PALM) {
+    const int pulse = elapsed / 100;
+    if (pixelsReady && lightsEnabled) {
+      for (uint8_t i = 0; i < NUM_PIXELS; ++i) {
+        pixels.set(i, RED, pulse % 2 == 0 ? 50 : 0);
+      }
+      pixels.show();
+    }
+    if (buzzerReady && soundEnabled && pulse % 2 == 0 && pulse != lastPalmPulse) {
+      buzzer.tone(440, 50);
+      lastPalmPulse = pulse;
+    }
+  } else if (animation == THUMB) {
+    float factor = 1.0f - static_cast<float>(elapsed) / ANIMATION_MS;
+    factor *= factor;
+    const int brightness = static_cast<int>(100 * factor);
+    if (pixelsReady && lightsEnabled) {
+      for (uint8_t i = 0; i < NUM_PIXELS; ++i) pixels.set(i, GREEN, brightness);
+      pixels.show();
+    }
+    if (buzzerReady && soundEnabled) {
+      const int frequency = 180 + static_cast<int>(660 * factor);
+      buzzer.tone(frequency, FRAME_MS + 5);
+    }
+  } else if (animation == SWIPE) {
+    const int head = (elapsed * NUM_PIXELS * 2) / ANIMATION_MS;
+    if (pixelsReady && lightsEnabled) {
+      pixels.clear();
+      for (int trail = 0; trail < 4; ++trail) {
+        const int index = (head - trail + NUM_PIXELS * 2) % NUM_PIXELS;
+        pixels.set(index, BLUE, 100 - trail * 20);
+      }
+      pixels.show();
+    }
+    if (buzzerReady && soundEnabled) {
+      const int frequency = 180 + 660 / (head + 1);
+      buzzer.tone(frequency, FRAME_MS + 5);
+    }
+  }
+}
+
+void setup() {
+  for (int pin : RGB_PINS) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, HIGH);
+  }
+  Modulino.begin(Wire1);  // UNO Q Qwiic connector.
+  pixelsReady = pixels.begin();
+  buzzerReady = buzzer.begin();
+  matrixReady = matrix.begin();
+  if (matrixReady) matrix.setGrayscaleBits(8);
+  show_color(0);
+  Bridge.begin();
+  Bridge.provide_safe("set_gesture_feedback", set_gesture_feedback);
+  Bridge.provide_safe("show_skip", show_skip);
+  Bridge.provide_safe("gesture_feedback_version", gesture_feedback_version);
+}
+
+void loop() {
+  const unsigned long now = millis();
+  if ((gestureColor != 0 || animation != NONE) &&
+      now - lastHeartbeat >= FEEDBACK_TIMEOUT_MS) {
+    clear_feedback();
+  } else {
+    render_animation(now);
+  }
+  delay(10);
+}
