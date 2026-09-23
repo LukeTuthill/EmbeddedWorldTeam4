@@ -1,5 +1,22 @@
 # UNO Q gesture feedback app
 
+# Starlight: On-Device Gesture Recognition on the Arduino UNO Q
+**Embedded World North America 2026 Edge AI Hackathon, Team 4 (Starlight)**
+Anaheim, CA - September 22–23, 2026
+Hackaday.io project: https://hackaday.io/project/206735-ewna-hackathon-team-4
+
+## The challenge
+A warehouse worker whose hands are full needs to pause, confirm, or skip a step on a nearby
+screen without touching it. Our system watches the scene with a webcam, recognizes three
+gestures, and triggers a different action for each within a few hundred milliseconds. All
+inference runs on the board, with no network connection.
+
+## Team
+- Luke Tuthill (Purdue)
+- Jingbin Lin (UCSD)
+- Yufan Wang (UCSD)
+- Eduardo Hideki Sakamoto (CSUN)
+
 Use [`uno-q-gesture-integrated/`](uno-q-gesture-integrated/) as the Arduino App Lab app. It runs the bundled `hand-gestures` model on the UNO Q, detects open palm and thumbs-up, derives horizontal swipe from multiple consecutive palm detections, then drives onboard RGB indicators, Modulino Pixels, and Modulino Buzzer.
 
 1. Connect UNO Q to App Lab on your PC.
