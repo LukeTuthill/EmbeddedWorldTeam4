@@ -9,7 +9,7 @@ Arduino_LED_Matrix matrix;
 int NUM_PIXELS = 8;
 
 int ROWS = 8;
-int COLS = 8;
+int COLS = 13;
 int MATRIX_BRIGHTNESS = 255;
 
 const uint8_t DIGITS[10][5] = {
@@ -31,6 +31,8 @@ long duration = 1000;
 int frequency = 440;
 
 int animation_time = 0;
+
+int loop_interval = 10;
 
 enum Gesture {
     RAISED_PALM,
@@ -83,7 +85,7 @@ void display_count() {
         for (uint8_t row = 0; row < 5; row++) {
             for (uint8_t col = 0; col < 3; col++) {
                 if (DIGITS[d][row] & (0b100 >> col)) {
-                    frame[(y0 + row) * COLS + x0 + i * 4 + col] = BRIGHTNESS;
+                    frame[(y0 + row) * COLS + x0 + i * 4 + col] = MATRIX_BRIGHTNESS;
                 }
             }
         }
@@ -130,28 +132,25 @@ void swipe_animation() {
     pixels.show();
 
     int buzz_frequency = 440 / (head + 1);
-    buzzer.tone(buzz_frequency, 12);
+    buzzer.tone(buzz_frequency, loop_interval + 2);
 }
 
 
 
 void thumbs_up_animation() {
-    float center = (NUM_PIXELS - 1) / 2.0;
-    float maxDist = center > 0 ? center : 1.0;
-
     float timeFactor = 1.0 - ((float)animation_time / (float)duration); // 1 -> 0
+    timeFactor *= timeFactor; // Squaring for smoothness
+    if (timeFactor < 0) timeFactor = 0;
+
+    int brightness = (int)(100 * timeFactor);
 
     for (int i = 0; i < NUM_PIXELS; i++) {
-        float dist = abs(i - center);
-        float spatialFactor = 1.0 - (dist / maxDist); // 1 at center, 0 at edges
-        if (spatialFactor < 0) spatialFactor = 0;
-
-        int brightness = (int)(100 * spatialFactor * timeFactor);
-        if (brightness < 0) brightness = 0;
-
         pixels.set(i, GREEN, brightness);
     }
+    
     pixels.show();
+    int buzz_frequency = (int)(frequency * timeFactor);
+    buzzer.tone(buzz_frequency, loop_interval + 2);
 }
 
 void update_animation() {
@@ -196,7 +195,7 @@ void loop() {
         animation_time += 10;
         update_animation();
     }
-    delay(10);
+    delay(loop_interval);
 }
 
 // API for python code to call when the given gestures are done
